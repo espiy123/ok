@@ -119,8 +119,8 @@ app.layout = dbc.Container(fluid=True, style={'height': '100vh'}, children=[
                         ("Liczba mrówek", "param-ants", 10, 1),
                         ("Alpha", "param-alpha", 1.0, 0.1),
                         ("Beta", "param-beta", 5.0, 0.1),
-                        ("Parowanie", "param-evaporation", 0.5, 0.1),
-                        ("Q", "param-q", 100, 1),
+                        ("Parowanie", "param-evaporation", 0.5, 0.01),
+                        ("Q", "param-q", 100.0, 0.01),
                     ]
                 ]
             ]),
