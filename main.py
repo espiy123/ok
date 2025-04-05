@@ -160,24 +160,25 @@ def toggle_aco_params(algorithm):
 )
 def handle_input(n_clicks_generate, contents, filename, num_points):
     trigger = callback_context.triggered_id
-    if trigger == 'generate-random-btn':
-        graph = {
-            str(i + 1): (random.randint(1, 10000), random.randint(1, 10000))
-            for i in range(num_points)
-        }
-        info = f"Wygenerowano {num_points} losowych punktów"
 
-    elif trigger == 'upload-data' and contents:
+    if contents is not None:
         try:
             content_type, content_string = contents.split(',')
             decoded = base64.b64decode(content_string).decode('utf-8').splitlines()
             graph = {
                 parts[0]: (float(parts[1]), float(parts[2]))
-                for parts in (line.split() for line in decoded[1:int(decoded[0])+1])
+                for parts in (line.split() for line in decoded[1:int(decoded[0]) + 1])
             }
             info = f"Wczytano plik: {filename}"
         except Exception as e:
             return dash.no_update, f"Błąd przy wczytywaniu: {e}", dash.no_update
+
+    elif trigger == 'generate-random-btn':
+        graph = {
+            str(i + 1): (random.randint(1, 10000), random.randint(1, 10000))
+            for i in range(num_points)
+        }
+        info = f"Wygenerowano {num_points} losowych punktów"
     else:
         return dash.no_update, dash.no_update, dash.no_update
 
