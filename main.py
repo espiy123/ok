@@ -4,7 +4,10 @@ import dash
 import networkx as nx
 import plotly.graph_objects as go
 import dash_bootstrap_components as dbc
+import numpy as np
+from numba import njit
 from dash import html, dcc, Output, Input, State, callback_context
+
 def euc(xa, ya, xb, yb):
     return ((xb - xa)**2 + (yb - ya)**2)**0.5
 
@@ -29,45 +32,103 @@ def greedy(graph):
     visited.append(visited[0])
     return visited, total_distance
 
-def aco(graph, iterations=100, n_ants=10, alpha=1, beta=5, evaporation=0.5, Q=100):
-    nodes = list(graph)
-    distances = {(i, j): euc(*graph[i], *graph[j]) for i in nodes for j in nodes if i != j}
-    pheromones = {k: 1.0 for k in distances}
-    best_path, best_length = None, float('inf')
+@njit
+def euclidean_distance(xa, ya, xb, yb):
+    return ((xb - xa)**2 + (yb - ya)**2)**0.5
+
+@njit
+def two_opt(path, dist_matrix):
+    improved = True
+    n = len(path)
+    while improved:
+        improved = False
+        for i in range(1, n - 2):
+            for j in range(i + 1, n - 1):
+                a, b = path[i - 1], path[i]
+                c, d = path[j], path[j + 1]
+                if dist_matrix[a][b] + dist_matrix[c][d] > dist_matrix[a][c] + dist_matrix[b][d]:
+                    path[i:j + 1] = path[i:j + 1][::-1]
+                    improved = True
+    return path
+
+@njit
+def compute_aco_jit(coords, iterations, n_ants, alpha, beta, evaporation, Q):
+    n = len(coords)
+    dist_matrix = np.zeros((n, n))
+    pheromones = np.ones((n, n))
+
+    for i in range(n):
+        for j in range(n):
+            if i != j:
+                dist_matrix[i][j] = euclidean_distance(coords[i][0], coords[i][1], coords[j][0], coords[j][1])
+
+    best_length = 1e10
+    best_path = np.arange(n + 1)
 
     for _ in range(iterations):
-        all_paths = []
         for _ in range(n_ants):
-            path = [random.choice(nodes)]
-            while len(path) < len(nodes):
-                current = path[-1]
-                unvisited = [n for n in nodes if n not in path]
-                probabilities = [
-                    (n, (pheromones[(current, n)] ** alpha) * (1 / distances[(current, n)] ** beta))
-                    for n in unvisited
-                ]
-                total = sum(p for _, p in probabilities) or len(probabilities)
-                r = random.uniform(0, total)
-                acc = 0
-                for node, prob in probabilities:
-                    acc += prob
-                    if acc >= r:
-                        path.append(node)
-                        break
-            path.append(path[0])
-            length = sum(distances[(path[i], path[i+1])] for i in range(len(path)-1))
-            all_paths.append((path, length))
-            if length < best_length:
-                best_path, best_length = path, length
+            path = np.full(n + 1, -1)
+            visited = np.zeros(n, dtype=np.bool_)
+            start = np.random.randint(0, n)
+            path[0] = start
+            visited[start] = True
 
-        for k in pheromones:
-            pheromones[k] *= (1 - evaporation)
-        for path, length in all_paths:
-            for i in range(len(path) - 1):
-                pheromones[(path[i], path[i + 1])] += Q / length
-                pheromones[(path[i + 1], path[i])] += Q / length
+            for step in range(1, n):
+                current = path[step - 1]
+                probs = np.zeros(n)
+                denom = 0.0
+                for j in range(n):
+                    if not visited[j]:
+                        probs[j] = (pheromones[current][j] ** alpha) * (1.0 / dist_matrix[current][j] ** beta)
+                        denom += probs[j]
+
+                if denom == 0:
+                    continue
+
+                r = np.random.random() * denom
+                acc = 0.0
+                for j in range(n):
+                    if not visited[j]:
+                        acc += probs[j]
+                        if acc >= r:
+                            path[step] = j
+                            visited[j] = True
+                            break
+
+            path[-1] = path[0]
+
+            # Apply 2-opt local search
+            path = two_opt(path, dist_matrix)
+
+            length = 0.0
+            for i in range(n):
+                length += dist_matrix[path[i]][path[i+1]]
+
+            if length < best_length:
+                best_length = length
+                best_path[:] = path
+
+            for i in range(n):
+                a = path[i]
+                b = path[i+1]
+                pheromones[a][b] += Q / length
+                pheromones[b][a] += Q / length
+
+        pheromones *= (1.0 - evaporation)
 
     return best_path, best_length
+
+def aco(graph, iterations=100, n_ants=10, alpha=1, beta=5, evaporation=0.5, Q=100):
+    node_list = list(graph)
+    index_map = {node: idx for idx, node in enumerate(node_list)}
+    coords = np.array([graph[node] for node in node_list])
+
+    path_indices, best_length = compute_aco_jit(coords, iterations, n_ants, alpha, beta, evaporation, Q)
+    best_path = [node_list[i] for i in path_indices]
+
+    return best_path, best_length
+
+# --- DASH APP ---
 
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 
@@ -120,7 +181,7 @@ app.layout = dbc.Container(fluid=True, style={'height': '100vh'}, children=[
                         ("Alpha", "param-alpha", 1.0, 0.1),
                         ("Beta", "param-beta", 5.0, 0.1),
                         ("Parowanie", "param-evaporation", 0.5, 0.01),
-                        ("Q", "param-q", 100.0, 0.01),
+                        ("Q", "param-q", 100.0, 0.01)
                     ]
                 ]
             ]),
