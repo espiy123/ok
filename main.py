@@ -79,7 +79,10 @@ def compute_aco_jit(coords, iterations, n_ants, alpha, beta, evaporation, Q):
                 denom = 0.0
                 for j in range(n):
                     if not visited[j]:
-                        probs[j] = (pheromones[current][j] ** alpha) * (1.0 / dist_matrix[current][j] ** beta)
+                        if dist_matrix[current][j] == 0:
+                            probs[j] = 0
+                        else:
+                            probs[j] = (pheromones[current][j] ** alpha) * (1.0 / dist_matrix[current][j] ** beta)
                         denom += probs[j]
 
                 if denom == 0:
