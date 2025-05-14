@@ -225,7 +225,7 @@ def toggle_aco_params(algorithm):
 def handle_input(n_clicks_generate, contents, filename, num_points):
     trigger = callback_context.triggered_id
 
-    if contents is not None:
+    if trigger == 'upload-data' and contents is not None:
         try:
             content_type, content_string = contents.split(',')
             decoded = base64.b64decode(content_string).decode('utf-8').splitlines()
@@ -248,6 +248,7 @@ def handle_input(n_clicks_generate, contents, filename, num_points):
 
     coord_text = "\n".join([str(len(graph))] + [f"{k} {int(x)} {int(y)}" for k, (x, y) in graph.items()])
     return graph, info, coord_text
+
 
 @app.callback(
     Output('graph-output', 'figure'),
